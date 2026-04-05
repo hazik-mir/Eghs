@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Teacher Review System</title>
+
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+
+<style>
+body{font-family:Poppins;background:#0f3d1f;color:#fff;padding:20px}
+.container{max-width:900px;margin:auto}
+.card{background:#fff;color:#000;padding:15px;border-radius:15px;margin:10px 0;cursor:pointer}
+.review{background:#eee;color:#000;padding:10px;border-radius:10px;margin-top:10px}
+.blur{filter:blur(6px)}
+.star{cursor:pointer;font-size:24px}
+.admin{background:#fff;color:#000;padding:15px;border-radius:15px;margin-top:20px}
+button{padding:8px 12px;border:none;border-radius:8px;cursor:pointer}
+textarea,input{width:100%;padding:10px;margin:5px 0;border-radius:8px;border:none}
+</style>
+</head>
+
+<body>
+
+<div class="container">
+
+<h2>Teacher Rating System</h2>
+
+<button onclick="openAdmin()">Admin Panel</button>
+
+<div id="teacherList"></div>
+
+<div id="formBox" style="display:none;">
+<h3 id="teacherTitle"></h3>
+
+<input id="name" placeholder="Enter Your Name">
+<input id="class" placeholder="Enter Your Class">
+<input id="section" placeholder="Enter Your Section">
+
+<label><input type="checkbox" id="anon"> Be Anonymous</label>
+
+<div id="stars"></div>
+
+<textarea id="reason" placeholder="Enter reason"></textarea>
+
+<button onclick="submitReview()">Submit</button>
+</div>
+
+<div id="reviews"></div>
+
+<!-- ADMIN -->
+<div id="adminPanel" class="admin" style="display:none;">
+<input type="password" id="adminPass" placeholder="Enter Password">
+<button onclick="checkAdmin()">Enter</button>
+
+<div id="adminContent" style="display:none;"></div>
+</div>
+
+</div>
+
+<script>
+// 🔥 FIREBASE CONFIG
+const firebaseConfig = {
+  apiKey: "AIzaSyCub1n6Mpm4T2G6jpM65MEvzUuxt55pJ5I",
+  authDomain: "evergreen-high-school.firebaseapp.com",
+  projectId: "evergreen-high-school"
+};
+
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+
+let selectedTeacher = "";
+let rating = 0;
+
+// ⭐ STAR SYSTEM
+const starBox = document.getElementById("stars");
+for(let i=1;i<=5;i++){
+  let s=document.createElement("span");
+  s.innerHTML="⭐";
+  s.className="star";
+  s.onclick=()=>{rating=i;highlightStars(i)};
+  starBox.appendChild(s);
+}
+function highlightStars(n){
+  document.querySelectorAll(".star").forEach((el,i)=>{
+    el.style.opacity = i<n ? "1" : "0.3";
+  });
+}
+
+// 📄 LOAD TEACHERS
+fetch("teachers.txt")
+.then(res=>res.text())
+.then(data=>{
+  const list = document.getElementById("teacherList");
+
+  data.split("\n").forEach(line=>{
+    if(!line.trim()) return;
+
+    let [name,gender]=line.split(":");
+
+    let div=document.createElement("div");
+    div.className="card";
+    div.innerHTML=`${name} (${gender})`;
+
+    div.onclick=()=>{
+      selectedTeacher=name;
+      document.getElementById("formBox").style.display="block";
+      document.getElementById("teacherTitle").innerText=name;
+      loadReviews(name);
+    };
+
+    list.appendChild(div);
+  });
+});
+
+// 📤 SUBMIT REVIEW
+function submitReview(){
+  const name = document.getElementById("name").value;
+  const cls = document.getElementById("class").value;
+  const sec = document.getElementById("section").value;
+  const anon = document.getElementById("anon").checked;
+  const reason = document.getElementById("reason").value;
+
+  if(!rating || !reason){
+    alert("Rating & reason required");
+    return;
+  }
+
+  db.collection("reviews").add({
+    teacher:selectedTeacher,
+    name,
+    class:cls,
+    section:sec,
+    anon,
+    rating,
+    reason,
+    time:Date.now()
+  });
+
+  alert("Submitted");
+}
+
+// 🔄 LOAD REVIEWS (USER)
+function loadReviews(teacher){
+  const box = document.getElementById("reviews");
+
+  db.collection("reviews")
+  .where("teacher","==",teacher)
+  .orderBy("time","desc")
+  .onSnapshot(snapshot=>{
+    box.innerHTML="";
+
+    snapshot.forEach(doc=>{
+      const d = doc.data();
+
+      let info = d.anon
+        ? `<span class="blur">${d.name} (${d.class}-${d.section})</span>`
+        : `${d.name} (${d.class}-${d.section})`;
+
+      let div=document.createElement("div");
+      div.className="review";
+
+      div.innerHTML=`
+        <b>${info}</b><br>
+        ⭐ ${d.rating}/5<br>
+        ${d.reason}
+      `;
+
+      box.appendChild(div);
+    });
+  });
+}
+
+// 🔐 ADMIN PANEL
+function openAdmin(){
+  document.getElementById("adminPanel").style.display="block";
+}
+
+function checkAdmin(){
+  const pass = document.getElementById("adminPass").value;
+
+  db.collection("admin").doc("config").get().then(doc=>{
+    if(pass === doc.data().password){
+      document.getElementById("adminContent").style.display="block";
+      loadAllReviews();
+    } else {
+      alert("Wrong password");
+    }
+  });
+}
+
+// 🔥 ADMIN VIEW
+function loadAllReviews(){
+  const box = document.getElementById("adminContent");
+
+  db.collection("reviews")
+  .orderBy("time","desc")
+  .onSnapshot(snapshot=>{
+    box.innerHTML="";
+
+    snapshot.forEach(doc=>{
+      const d = doc.data();
+
+      let div=document.createElement("div");
+      div.className="review";
+
+      div.innerHTML=`
+        <b>${d.name} (${d.class}-${d.section})</b><br>
+        Teacher: ${d.teacher}<br>
+        ⭐ ${d.rating}/5<br>
+        ${d.reason}<br>
+        <button onclick="deleteReview('${doc.id}')">Delete</button>
+      `;
+
+      box.appendChild(div);
+    });
+  });
+}
+
+// 🗑️ DELETE
+function deleteReview(id){
+  if(confirm("Delete this review?")){
+    db.collection("reviews").doc(id).delete();
+  }
+}
+</script>
+
+</body>
+</html>
